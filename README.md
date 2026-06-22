@@ -1,100 +1,68 @@
-# Peblo AI Story Buddy & Quiz Component
+# Peblo AI Story Buddy and Quiz Component
 
-A beautiful, gamified, kid-friendly Flutter application built as a challenge for the **Peblo Flutter Intern Role**. 
-
-The app features a custom-animated AI Buddy (Pip the Robot) that narrate stories to children using Native Text-To-Speech (TTS), dynamically triggers interactive quiz questions fetched from JSON, and celebrates correct answers with canvas confetti and haptic pulses.
+This repository contains the Flutter implementation for Peblo's AI Story Buddy and Quiz assessment. It features a vector-animated AI Buddy character that narrates short stories using Text-to-Speech (TTS), dynamically triggers an interactive quiz, and delivers visual and haptic success responses.
 
 ---
 
-## 🚀 How to Run the Project
+## Getting Started
 
-Since this code was initialized without platform-specific boilerplate to keep it clean and lightweight, please follow these steps to build the runner configurations:
+Follow these steps to initialize and run the project locally:
 
-1. **Open your terminal** in the root of the project directory (`SAS`):
-   ```bash
-   cd c:\Users\rahul\OneDrive\Desktop\SAS
-   ```
-
-2. **Generate the native runner files** for Android and iOS:
+1. **Generate platform-specific project configurations**:
    ```bash
    flutter create --org com.peblo.challenge --project-name peblo_challenge --platforms android,ios .
    ```
-
-3. **Install the dependencies**:
+2. **Install project dependencies**:
    ```bash
    flutter pub get
    ```
-
-4. **Run the application**:
-   * For Android: Connect an emulator or device and run:
-     ```bash
-     flutter run
-     ```
+3. **Execute the application on a connected device**:
+   ```bash
+   flutter run
+   ```
 
 ---
 
-## 🛠️ Challenge Questions & Documentation
+## Technical Documentation and Challenge Reflections
 
-### 1. Which framework did you choose and why?
-I chose **Flutter (Dart)**.
-* **Internship Focus:** The challenge specifically targets **Flutter & Swift**. Submitting in React Native is not recommended as it doesn't align with Peblo's tech stack requirements.
-* **60fps UI Performance:** Flutter compiles directly to machine code and paints its UI pixel-by-pixel using the Impeller/Skia engine. This allows complex animations (bouncing robot, rotating gears, shaking card, falling confetti) to execute at a locked 60fps even on mid-range, 3GB RAM Android devices.
-* **Native Bridges:** Flutter has mature packages like `flutter_tts` which interface directly with Android's `TextToSpeech` and iOS's `AVSpeechSynthesizer` without memory leaks.
+### 1. Framework Selection
+* **Selected Technology:** Flutter (Dart)
+* **Rationale:** Choosing Flutter ensures alignment with Peblo's mobile engineering ecosystem. Flutter compiles to native ARM machine code and interfaces with the native graphics pipeline (Impeller/Skia). This permits GPU-accelerated canvas renders (bounces, rotations, particle effects) at a consistent 60fps on resource-constrained devices, such as 3GB RAM Android handsets.
 
----
+### 2. Audio-to-Quiz State Transitions
+* **Architecture:** App state transitions are managed reactively via a central `StoryBuddyProvider` subclassing `ChangeNotifier`.
+* **Execution Flow:** 
+  1. The Text-to-Speech engine's native completion handler triggers the state transition.
+  2. The provider changes the app phase from `AppPhase.ttsPlaying` to `AppPhase.quizReady`.
+  3. The UI (`StoryBuddyScreen`) intercepts this phase update and uses an `AnimatedSwitcher` wrapped with a scale-fade transform and an `easeInOutBack` curve to smoothly slide out the story card and slide in the quiz card without layout layout stutters.
 
-### 2. How did you manage the transition state between audio ending and quiz appearing?
-The transition is handled reactively using a state machine managed by `StoryBuddyProvider`:
-* When TTS starts speaking, the app phase transitions to `AppPhase.ttsPlaying`.
-* We registered a listener callback via `FlutterTts.setCompletionHandler`.
-* The moment the audio finishes, the listener triggers `_loadQuiz()`, changing the phase to `AppPhase.quizLoading` and then `AppPhase.quizReady`.
-* On the UI layer (`story_buddy_screen.dart`), the widgets are enclosed in a custom **`AnimatedSwitcher`** using a scale and fade transition with `Curves.easeInOutBack`. This results in a smooth, spring-like exit of the story text card and a delightful slide-in of the quiz card with no abrupt jumps.
+### 3. Data-Driven Renderer Layout
+* **Dynamic Options:** Quiz components are parsed from dynamic JSON payloads via the `QuizQuestion` model.
+* **Layout Adaptability:** The options view utilizes flex-based layout containers that scale automatically to support varying choice counts (3, 4, or 5 options) without hardcoded height values.
+* **Theme Styling:** Option borders and markers are mapped using modulo indexes (`index % optionColors.length`) to match a clean, pastel-toned visual system.
 
----
+### 4. Remote Audio Caching Approach
+* **Local TTS:** The engine uses native on-device speech engines, requiring zero network overhead.
+* **ElevenLabs Integration Strategy (Future):**
+  * **Key Hashing:** Generate a unique MD5/SHA-256 hash representing the story string (e.g., `story_content.mp3`).
+  * **File Check:** Verify if a file matching the hash exists in the local caching directory (`ApplicationDocumentsDirectory`).
+  * **Network Interceptor:** If the file exists, initialize playback locally. If not, fetch the stream from the endpoint, stream the bytes directly to the file system, and play the file locally to minimize remote API costs.
 
-### 3. How did you build the quiz to be data-driven?
-The quiz is dynamically parsed from a backend-style JSON schema via the `QuizQuestion` data model:
-* Options are not hardcoded. The `QuizCard` reads the list of options directly from the model and uses `ListView.separated` to build the buttons.
-* It dynamically computes grid heights and structures regardless of whether the question has **3, 4, or 5 options**.
-* Layout safety is ensured by styling each option button using modulo arithmetic (`index % optionColors.length`) to match them with a kid-friendly pastel color palette dynamically.
+### 5. Playback Loading and Exception Boundaries
+* **Loading UI:** Triggering playback shifts the UI into a loading state. The button displays a progress spinner, and the robot's eye color transitions to a thinking state (teal).
+* **Exception Boundaries:** If the TTS engine fails to initialize or throws a system error, the provider transitions to `AppPhase.failure`. This swaps the active widget card to a recovery view displaying a clean connection-error warning and a "Try Again" action button.
 
----
+### 6. Profiling and Performance Diagnostics
+* **Metrics Tracked:** Flutter DevTools was used to measure frame rendering times (FPS), UI thread latency (ms/frame), and GPU thread overhead.
+* **Before Optimization:** Redrawing the entire tree during the robot's idle breathing animation caused frame times to spike to **18-20ms**, resulting in stutters on low-end hardware.
+* **After Optimization:** Isolated animation ticks inside a standalone custom painter (`BuddyAvatar`) to prevent parent widget rebuilds. Frametimes dropped to **6-9ms** (locked at 60 FPS).
 
-### 4. How did you handle audio loading and failure states?
-* **Loading State:** Tapping "Read Me a Story" immediately shifts the app phase to `AppPhase.ttsLoading` and sets the robot's expression to `BuddyMood.thinking` (eyes turn teal, gear spins quickly). The play button turns into a progress spinner to give immediate visual feedback.
-* **Failure State:** If the TTS engine fails to initialize or throws an error, the provider transitions to `AppPhase.failure`. The UI displays a kid-friendly offline screen with an illustrative warning and a large **"Try Again"** button. The robot's face becomes sad (drooped eyes and mouth) to signal a problem.
-* **Recovery:** Pressing "Try Again" resets the error boundaries and calls `retry()` to safely re-initialize playback.
+### 7. Resource Constraints and Optimizations
+* **Asset-Free Vector Drawing:** Built Pip the Robot entirely using native vector painting code (`CustomPainter`). This eliminates memory footprints and garbage collection sweeps caused by loading Lottie JSON files or PNG assets.
+* **GPU-Bound Matrix Transforms:** Breathing, blinking, and card shake transforms are offloaded directly to the hardware GPU using native animation controllers.
+* **Zero Leak Lifecycle:** Added automatic teardown logic in the state provider to dispose of audio listener instances when the interface is unmounted.
 
----
-
-### 5. What is your caching approach for remote audio?
-While we currently use native on-device TTS (which runs locally offline), if we were to transition to a high-fidelity remote API (like ElevenLabs):
-* **Hashing as Key:** We would hash the story text (e.g., using MD5/SHA256) to create a unique file name (e.g., `once_upon_a_time.mp3`).
-* **Cache Directory Storage:** Before making an API request, we would check if a file with this hash exists in the app's `TemporaryDirectory` or `ApplicationDocumentsDirectory` using the `path_provider` package.
-* **Network Interceptor:** If the file is found locally, we would play the audio from the file path directly. If not found, we fetch the audio stream from ElevenLabs, stream the bytes to a local file, and then play it. This ensures each story is only downloaded **once**, reducing API costs and latency.
-
----
-
-### 6. Your performance profiling: what you measured, what you changed, before/after
-* **What was measured:** Flutter rendering frame rates (FPS), UI thread latency (ms/frame), GPU thread overhead, and device memory footprint.
-* **Before optimization:** In initial prototypes, calling high-frequency rebuilds on the parent widget tree during the robot's breathing and gear-rotation loop resulted in frame times spiking up to **18-20ms** (producing micro-stutters and dropping FPS below 50).
-* **What was changed:**
-  1. Isolated animations into standalone leaf widgets (like `BuddyAvatar` and custom painters) so only those canvases repaint, avoiding full screen or parent container re-renders.
-  2. Replaced heavy asset imports with native vector code drawing (`CustomPainter`), eliminating memory decoding cycles.
-  3. Switched option card transitions to use lightweight implicit animations (`AnimatedContainer`) with duration thresholds (250ms).
-* **After optimization:** Frame rendering times dropped consistently to **6ms - 9ms** per frame, locked at a smooth **60 FPS** with negligible CPU overhead, well within the 16.6ms threshold for a stutter-free experience.
-
----
-
-### 7. How did you optimize to stay lightweight on mid-range Android devices?
-To prevent lags and memory crashes on budget devices with ≈3GB RAM:
-1. **Asset-Free Vector Rendering:** Pip the Robot is drawn dynamically using Flutter’s code-based canvas. This avoids caching heavy textures (sprites, PNGs, Lottie assets) in JVM/Native memory.
-2. **GPU-Accelerated Transforms:** All translations (shake offsets, bouncing, eye blinking, gear rotation) are handled using native Flutter animation triggers which offload calculation directly to the system GPU.
-3. **No Retain Cycles / Memory Leak Safeguards:** Checked all providers and listeners. Custom completion handlers in the TTS class are cleared/stopped when the widget is disposed to prevent background memory overhead.
-
----
-
-### 8. AI Usage & Judgment Reflection
-* **Where AI was used:** AI was used to draft initial boilerplate structures and calculate specific bezier curves for the happy/sad facial expressions.
-* **Rejected AI Suggestion:** The AI suggested using standard Lottie assets for animations. I **rejected** this suggestion because Lottie parses JSON strings at runtime and caches heavy vector frames, which causes garbage collection sweeps (GC spikes) that stutter on 3GB RAM devices. Building animations natively in code avoids these spikes entirely.
-* **What didn't work & Resolution:** Initially, the spoken TTS was too fast and monotone. I resolved this by lowering the speech rate to `0.38` and increasing pitch to `1.35 - 1.45`, while adding dynamic voice scanning to pick an English-female voice profile as a natural base for a high-pitched child voice. Additionally, TTS would read emojis aloud (e.g., saying "robot" instead of showing it). I fixed this by implementing a regex-based emoji stripper that runs right before passing the string to the speech engine.
+### 8. Development Reflection and AI Usage
+* **AI Assistance:** Utilized AI to generate basic class layouts and calculate bezier math coordinates for the vector eye shapes.
+* **Rejected Suggestion:** The AI recommended using Lottie for animations. This was rejected because parsing Lottie JSON strings at runtime creates CPU stutters and garbage collection overhead on 3GB RAM devices. Re-implementing animations directly inside a CustomPainter canvas is more lightweight.
+* **Fixes & Refinements:** Lowered the default TTS rate to `0.38` and increased pitch to `1.35 - 1.45` to generate a high-pitched child-like narration. Created a regex-based helper that strips emojis from the text stream before passing it to the TTS engine so the narrator does not read emoji names aloud.
